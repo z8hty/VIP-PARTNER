@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import requests
 import os
 
 st.set_page_config(page_title="VIP PARTNER | Outils CGP", layout="wide", page_icon="💎")
@@ -19,11 +20,28 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- FONCTIONS CACHÉES POUR ÉVITER LE BLOCAGE (Rate Limit) ---
-@st.cache_data(ttl=3600) # Garde en mémoire pendant 1h
+# --- FONCTIONS CACHÉES & CONVERSION ISIN ---
+@st.cache_data(ttl=3600)
+def isin_to_ticker(user_input):
+    """Convertit un ISIN en Ticker via l'API de recherche Yahoo Finance"""
+    val = user_input.strip().upper()
+    # Si ça ressemble à un ISIN (12 caractères, commence par 2 lettres)
+    if len(val) == 12 and val[:2].isalpha():
+        try:
+            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={val}"
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            res = requests.get(url, headers=headers)
+            data = res.json()
+            if 'quotes' in data and len(data['quotes']) > 0:
+                return data['quotes'][0]['symbol']
+        except:
+            return None
+    return val # Si ce n'est pas un ISIN, on renvoie le texte tel quel
+
+@st.cache_data(ttl=3600)
 def fetch_market_data(ticker):
     stock = yf.Ticker(ticker)
-    data = stock.history(period="5y") # On récupère 5 ans pour les moyennes longues
+    data = stock.history(period="5y")
     return data
 
 def determiner_devise(ticker):
@@ -43,13 +61,11 @@ def calcul_usufruit_nue_prop(age):
     elif age <= 90: return 0.2, 0.8
     else: return 0.1, 0.9
 
-# --- SIDEBAR ---
-# VERIFIE LE NOM DE TON FICHIER ICI : S'il s'appelle Logo.png sur github, change la ligne ci-dessous.
-chemin_logo = "logo.png" 
-
-if os.path.exists(chemin_logo):
-    st.sidebar.image(chemin_logo, use_column_width=True)
-else:
+# --- SIDEBAR & LOGO ---
+# Appel direct du logo. S'il est bien nommé "logo.png" sur le dépôt, il s'affichera.
+try:
+    st.sidebar.image("logo.png", use_column_width=True)
+except:
     st.sidebar.markdown("## 💎 VIP PARTNER")
 
 st.sidebar.markdown("---")
@@ -61,93 +77,84 @@ menu = st.sidebar.radio("Expertise Patrimoniale", [
 ])
 
 # ==========================================
-# MODULE 1 : MARCHÉS FINANCIERS (COMPLEXIFIÉ)
+# MODULE 1 : MARCHÉS FINANCIERS (AVEC ISIN)
 # ==========================================
 if menu == "1. Marchés Financiers (Expert)":
     st.title("📈 Analyse Technique & Fondamentale")
-    st.markdown("Recherchez un actif via son **Ticker officiel** (Ex: `CW8.PA` pour Amundi MSCI World, `AI.PA` pour Air Liquide, `BTC-USD` pour Bitcoin).")
+    st.markdown("Recherchez un actif via son **Code ISIN** ou son **Ticker** (Ex: `FR0010315770`, `LU1681043599`, `CW8.PA`, `BTC-USD`).")
     
     col_input, col_period = st.columns([3, 1])
-    ticker = col_input.text_input("Ticker Yahoo Finance :", "CW8.PA")
+    recherche_utilisateur = col_input.text_input("ISIN ou Ticker :", "LU1681043599")
     periode_affichage = col_period.selectbox("Période d'affichage", ["1 an", "3 ans", "5 ans"])
     
     try:
-        # Récupération des données avec le cache
-        data = fetch_market_data(ticker)
+        # 1. Conversion de l'ISIN en Ticker si nécessaire
+        ticker_final = isin_to_ticker(recherche_utilisateur)
         
-        if not data.empty:
-            devise = determiner_devise(ticker)
-            
-            # Calcul des indicateurs techniques
-            data['SMA50'] = data['Close'].rolling(window=50).mean()
-            data['SMA200'] = data['Close'].rolling(window=200).mean()
-            
-            # Calcul RSI
-            delta = data['Close'].diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-            rs = gain / loss
-            data['RSI'] = 100 - (100 / (1 + rs))
-            
-            # Filtrage selon la période choisie pour l'affichage
-            if periode_affichage == "1 an":
-                df_display = data.last('365D')
-            elif periode_affichage == "3 ans":
-                df_display = data.last('1095D')
-            else:
-                df_display = data
-            
-            # --- MÉTRIQUES CLÉS ---
-            c1, c2, c3, c4 = st.columns(4)
-            prix_actuel = df_display['Close'].iloc[-1]
-            prix_debut = df_display['Close'].iloc[0]
-            perf_periode = ((prix_actuel / prix_debut) - 1) * 100
-            
-            rsi_actuel = df_display['RSI'].iloc[-1]
-            volatilite = df_display['Close'].pct_change().std() * np.sqrt(252) * 100
-            
-            c1.metric("Dernier Cours", f"{prix_actuel:,.2f} {devise}")
-            c2.metric(f"Perf. {periode_affichage}", f"{perf_periode:.2f} %")
-            c3.metric("Volatilité (Risque)", f"{volatilite:.2f} %")
-            c4.metric("RSI 14j", f"{rsi_actuel:.1f}", 
-                      delta="Surchat (>70)" if rsi_actuel > 70 else "Survente (<30)" if rsi_actuel < 30 else "Neutre",
-                      delta_color="inverse" if rsi_actuel > 70 or rsi_actuel < 30 else "off")
-            
-            # --- GRAPHIQUE CHANDELIERS AVANCÉ ---
-            fig = go.Figure()
-            
-            # Cours en bougies (Candlestick)
-            fig.add_trace(go.Candlestick(x=df_display.index, open=df_display['Open'], high=df_display['High'], low=df_display['Low'], close=df_display['Close'], name="Cours"))
-            
-            # Moyennes Mobiles
-            fig.add_trace(go.Scatter(x=df_display.index, y=df_display['SMA50'], line=dict(color='blue', width=1), name="Moyenne 50j"))
-            fig.add_trace(go.Scatter(x=df_display.index, y=df_display['SMA200'], line=dict(color='orange', width=1.5), name="Moyenne 200j (Tendance longue)"))
-            
-            fig.update_layout(
-                title=f"Analyse Graphique - {ticker}",
-                yaxis_title=f"Prix ({devise})",
-                xaxis_rangeslider_visible=False,
-                height=600,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-            st.plotly_chart(fig, theme="streamlit", use_container_width=True)
-            
-            # Interprétation auto pour le client
-            st.subheader("💡 Interprétation Rapide")
-            tendance = "Haussière 🟢" if prix_actuel > df_display['SMA200'].iloc[-1] else "Baissière 🔴"
-            st.write(f"- **Tendance de fond (Moyenne 200j) :** La tendance long terme est **{tendance}**.")
-            if rsi_actuel > 70:
-                st.warning("- **Indicateur RSI :** L'actif est potentiellement en surchauffe (surachat). Un risque de correction à court terme existe.")
-            elif rsi_actuel < 30:
-                st.success("- **Indicateur RSI :** L'actif a été fortement vendu (survente). Cela peut représenter un point d'entrée intéressant.")
-            else:
-                st.info("- **Indicateur RSI :** Le marché est dans une zone neutre, pas d'excès à court terme.")
-
+        if ticker_final is None:
+            st.error("Impossible de trouver un actif correspondant à ce code ISIN sur les marchés publics.")
         else:
-            st.warning("Aucune donnée trouvée. Vérifiez que vous avez bien tapé un Ticker officiel (ex: LVMH s'écrit MC.PA).")
+            if ticker_final != recherche_utilisateur.upper():
+                st.success(f"✅ Code ISIN reconnu. Ticker associé : **{ticker_final}**")
+            
+            # 2. Récupération des données
+            data = fetch_market_data(ticker_final)
+            
+            if not data.empty:
+                devise = determiner_devise(ticker_final)
+                
+                # Calcul des indicateurs techniques
+                data['SMA50'] = data['Close'].rolling(window=50).mean()
+                data['SMA200'] = data['Close'].rolling(window=200).mean()
+                
+                delta = data['Close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / loss
+                data['RSI'] = 100 - (100 / (1 + rs))
+                
+                if periode_affichage == "1 an":
+                    df_display = data.last('365D')
+                elif periode_affichage == "3 ans":
+                    df_display = data.last('1095D')
+                else:
+                    df_display = data
+                
+                # --- MÉTRIQUES CLÉS ---
+                c1, c2, c3, c4 = st.columns(4)
+                prix_actuel = df_display['Close'].iloc[-1]
+                prix_debut = df_display['Close'].iloc[0]
+                perf_periode = ((prix_actuel / prix_debut) - 1) * 100
+                rsi_actuel = df_display['RSI'].iloc[-1]
+                volatilite = df_display['Close'].pct_change().std() * np.sqrt(252) * 100
+                
+                c1.metric("Dernier Cours", f"{prix_actuel:,.2f} {devise}")
+                c2.metric(f"Perf. {periode_affichage}", f"{perf_periode:.2f} %")
+                c3.metric("Volatilité (Risque)", f"{volatilite:.2f} %")
+                c4.metric("RSI 14j", f"{rsi_actuel:.1f}", 
+                          delta="Surchat (>70)" if rsi_actuel > 70 else "Survente (<30)" if rsi_actuel < 30 else "Neutre",
+                          delta_color="inverse" if rsi_actuel > 70 or rsi_actuel < 30 else "off")
+                
+                # --- GRAPHIQUE ---
+                fig = go.Figure()
+                fig.add_trace(go.Candlestick(x=df_display.index, open=df_display['Open'], high=df_display['High'], low=df_display['Low'], close=df_display['Close'], name="Cours"))
+                fig.add_trace(go.Scatter(x=df_display.index, y=df_display['SMA50'], line=dict(color='blue', width=1), name="Moyenne 50j"))
+                fig.add_trace(go.Scatter(x=df_display.index, y=df_display['SMA200'], line=dict(color='orange', width=1.5), name="Moyenne 200j (Tendance longue)"))
+                
+                fig.update_layout(title=f"Analyse Graphique - {ticker_final}", yaxis_title=f"Prix ({devise})", xaxis_rangeslider_visible=False, height=600, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+                st.plotly_chart(fig, theme="streamlit", use_container_width=True)
+                
+                st.subheader("💡 Interprétation Rapide")
+                tendance = "Haussière 🟢" if prix_actuel > df_display['SMA200'].iloc[-1] else "Baissière 🔴"
+                st.write(f"- **Tendance de fond (Moyenne 200j) :** La tendance long terme est **{tendance}**.")
+                if rsi_actuel > 70: st.warning("- **Indicateur RSI :** L'actif est potentiellement en surchauffe (surachat). Risque de correction.")
+                elif rsi_actuel < 30: st.success("- **Indicateur RSI :** L'actif a été fortement vendu (survente). Point d'entrée intéressant possible.")
+                else: st.info("- **Indicateur RSI :** Le marché est dans une zone neutre.")
+
+            else:
+                st.warning("Aucune donnée trouvée pour cet actif.")
     except Exception as e:
-        st.error(f"Erreur de connexion aux marchés. L'actif n'existe pas ou le serveur bloque : {e}")
-        
+        st.error(f"Erreur de connexion : {e}")
 
 # ==========================================
 # MODULE 2 : CAPITALISATION & PFU
@@ -173,10 +180,8 @@ elif menu == "2. Capitalisation & Fiscalité":
         total_versements += versement
         
     plus_values = cap - total_versements
-    pfu = plus_values * 0.30 # Flat tax 30%
+    pfu = plus_values * 0.30
     capital_net_fiscal = cap - pfu
-    
-    # Impact inflation (Valeur actualisée)
     pouvoir_achat_net = capital_net_fiscal / ((1 + (inflation/100))**annees)
     
     st.subheader("Synthèse à la sortie")
@@ -186,22 +191,21 @@ elif menu == "2. Capitalisation & Fiscalité":
     r3.metric("Impôts (PFU 30%)", f"- {pfu:,.0f} €".replace(',', ' '))
     
     st.info(f"💶 **Valeur Nette dans la poche du client : {capital_net_fiscal:,.0f} €**")
-    st.warning(f"🛒 **Pouvoir d'achat réel** (Ajusté de {inflation}% d'inflation) : **{pouvoir_achat_net:,.0f} €** (C'est ce que l'argent vaudra vraiment dans {annees} ans).")
+    st.warning(f"🛒 **Pouvoir d'achat réel** (Ajusté de {inflation}% d'inflation) : **{pouvoir_achat_net:,.0f} €**")
 
 # ==========================================
 # MODULE 3 : IFI COMPLEXE
 # ==========================================
 elif menu == "3. Impôt sur la Fortune (IFI)":
     st.title("🏛️ Simulateur IFI (Barème 2024)")
-    
     st.write("Calcul du patrimoine net taxable avec abattement Résidence Principale et dettes.")
     
     c1, c2, c3 = st.columns(3)
     rp = c1.number_input("Valeur Résidence Principale (€)", value=900000, step=50000)
     autre_immo = c2.number_input("Autres Biens Immobiliers & SCPI (€)", value=600000, step=50000)
-    dettes = c3.number_input("Passif déductible (Capital restant dû, etc.) (€)", value=150000, step=10000)
+    dettes = c3.number_input("Passif déductible (Capital restant dû) (€)", value=150000, step=10000)
     
-    rp_nette = rp * 0.70 # Abattement 30% légal
+    rp_nette = rp * 0.70
     patrimoine_net_taxable = rp_nette + autre_immo - dettes
     
     st.markdown("### Synthèse du Patrimoine")
@@ -216,9 +220,8 @@ elif menu == "3. Impôt sur la Fortune (IFI)":
         if p > 5000000: ifi += (p - 5000000) * 0.0125; p = 5000000
         if p > 2570000: ifi += (p - 2570000) * 0.01; p = 2570000
         if p > 1300000: ifi += (p - 1300000) * 0.007; p = 1300000
-        if p > 800000: ifi += (p - 800000) * 0.005 # Le barème commence à 800k si le seuil de 1.3M est franchi
+        if p > 800000: ifi += (p - 800000) * 0.005
         
-        # Application de la décote légale pour les patrimoines entre 1.3M et 1.4M
         if 1300000 < patrimoine_net_taxable < 1400000:
             decote = 17500 - (0.0125 * patrimoine_net_taxable)
             ifi = max(0, ifi - decote)
@@ -226,21 +229,19 @@ elif menu == "3. Impôt sur la Fortune (IFI)":
             
         st.error(f"🔴 Montant de l'IFI à régler : {ifi:,.0f} € / an")
     else:
-        st.success("🟢 Patrimoine Net Taxable inférieur à 1 300 000 €. Vous n'êtes pas assujetti à l'IFI.")
+        st.success("🟢 Patrimoine Net Taxable inférieur à 1 300 000 €. Non assujetti à l'IFI.")
 
 # ==========================================
 # MODULE 4 : DÉMEMBREMENT
 # ==========================================
 elif menu == "4. Transmission & Démembrement":
     st.title("👨‍👩‍👧‍👦 Démembrement de Propriété (Art. 669 CGI)")
-    st.write("Stratégie de donation avec réserve d'usufruit.")
     
     c1, c2 = st.columns(2)
     valeur_bien = c1.number_input("Valeur du bien en Pleine Propriété (€)", value=400000, step=10000)
     age_donateur = c2.slider("Âge du donateur (Usufruitier)", 40, 95, 65)
     
     usufruit_pct, nue_prop_pct = calcul_usufruit_nue_prop(age_donateur)
-    
     valeur_usufruit = valeur_bien * usufruit_pct
     valeur_nue_prop = valeur_bien * nue_prop_pct
     
@@ -248,4 +249,4 @@ elif menu == "4. Transmission & Démembrement":
     r1.metric(f"Valeur Usufruit ({usufruit_pct*100:.0f}%)", f"{valeur_usufruit:,.0f} €".replace(',', ' '))
     r2.metric(f"Valeur Nue-Propriété ({nue_prop_pct*100:.0f}%)", f"{valeur_nue_prop:,.0f} €".replace(',', ' '))
     
-    st.info(f"💡 **Stratégie :** En donnant la Nue-Propriété aujourd'hui (à {age_donateur} ans), les droits de succession seront calculés uniquement sur **{valeur_nue_prop:,.0f} €** au lieu de {valeur_bien:,.0f} €. Au décès, l'usufruit s'éteint et l'enfant récupère la pleine propriété sans impôt supplémentaire.")
+    st.info(f"💡 **Stratégie :** En donnant la Nue-Propriété aujourd'hui, les droits de succession seront calculés sur **{valeur_nue_prop:,.0f} €** au lieu de {valeur_bien:,.0f} €.")
