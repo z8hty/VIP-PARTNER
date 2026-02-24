@@ -3,131 +3,110 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
-from datetime import datetime
-from scipy.optimize import minimize
+import os
 
-# --- CONFIGURATION & THÈME ---
-st.set_page_config(page_title="VIP PARTNER | Ingénierie Patrimoniale", layout="wide")
+# --- CONFIGURATION ---
+st.set_page_config(page_title="VIP PARTNER | Expertise", layout="wide")
 
-# Custom CSS pour un look "Cabinet Privé"
+# --- STYLE LISIBLE ET PRO ---
 st.markdown("""
     <style>
-    .main { background-color: #0E1117; }
-    .stMetric { background-color: #161B22; border: 1px solid #B5A27B; padding: 15px; border-radius: 8px; }
-    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
-    .stTabs [data-baseweb="tab"] { color: #FFFFFF; font-weight: bold; }
-    .stTabs [aria-selected="true"] { color: #B5A27B !important; border-bottom-color: #B5A27B !important; }
-    h1, h2, h3 { color: #B5A27B; font-family: 'Georgia', serif; }
+    .main { background-color: #0E1117; color: #E0E0E0; }
+    .stMetric { background-color: #1A1F26; padding: 15px; border-radius: 10px; border-left: 5px solid #B5A27B; }
+    h1, h2 { color: #B5A27B !important; }
+    .stButton>button { background-color: #B5A27B; color: #0A1A3F; width: 100%; border-radius: 5px; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- FONCTIONS CALCULS MÉTIERS ---
+# --- SÉCURITÉ LOGO ---
+def load_logo():
+    if os.path.exists("logo.png"):
+        st.sidebar.image("logo.png", width=200)
+    else:
+        st.sidebar.title("💎 VIP PARTNER")
+        st.sidebar.warning("Logo.png manquant sur GitHub")
 
-def simulate_lmnp(prix_bien, loyer_mensuel, charges_copro, taxe_fonciere, apport):
-    """Simulation simplifiée LMNP au réel."""
-    revenu_annuel = loyer_mensuel * 12
-    frais_notaire = prix_bien * 0.075
-    base_amortissable = (prix_bien * 0.85) # On exclut le terrain
-    amortissement_annuel = base_amortissable / 25
-    charges_totale = charges_copro + taxe_fonciere + amortissement_annuel
-    resultat_fiscal = max(0, revenu_annuel - charges_totale)
-    cash_flow_net = revenu_annuel - (charges_copro + taxe_fonciere)
-    return cash_flow_net, resultat_fiscal
+# --- LOGIQUE MÉTIER CGP ---
+def calcul_ir(revenu_net_imposable, parts=1):
+    """Calcul simplifié de l'Impôt sur le Revenu 2024/2025 (Barème Progressif)"""
+    quotient = revenu_net_imposable / parts
+    impot = 0
+    if quotient > 177106:
+        impot += (quotient - 177106) * 0.45
+        quotient = 177106
+    if quotient > 82341:
+        impot += (quotient - 82341) * 0.41
+        quotient = 82341
+    if quotient > 28797:
+        impot += (quotient - 28797) * 0.30
+        quotient = 28797
+    if quotient > 11294:
+        impot += (quotient - 11294) * 0.11
+    return round(impot * parts)
 
-# --- NAVIGATION ---
-with st.sidebar:
-    st.image("logo.png")
-    st.title("VIP PARTNER")
-    menu = st.radio("SÉLECTION DU MODULE", 
-                    ["Tableau de Bord Marché", "Optimisation Portefeuille", "Simulateur Immobilier (LMNP)", "Audit Fiscal & Retraite"])
-    st.info("Outil réservé aux conseillers VIP Partner.")
+# --- INTERFACE ---
+load_logo()
+menu = st.sidebar.radio("Expertise", ["Marchés & Actifs", "Immobilier (LMNP/Pinel)", "Audit Fiscal (IR)", "Projection Retraite"])
 
-# --- MODULE 1 : ANALYSE MARCHÉ PRO ---
-if menu == "Tableau de Bord Marché":
-    st.header("📊 Veille Marchés Financiers")
-    ticker = st.text_input("Ticker (ex: AI.PA, SPY, BTC-USD)", "AI.PA")
+if menu == "Marchés & Actifs":
+    st.title("📈 Analyse des Supports")
+    ticker = st.text_input("Rechercher un actif (ex: CW8.PA, AI.PA, BTC-USD)", "CW8.PA")
     
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        df = yf.download(ticker, period="2y")
-        fig = go.Figure(data=[go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'])])
-        fig.update_layout(template="plotly_dark", title=f"Analyse Technique : {ticker}", 
-                          xaxis_rangeslider_visible=False, paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        last_p = df['Close'].iloc[-1].item()
-        st.metric("Cours Actuel", f"{last_p:.2f} €")
-        st.write("**Indicateurs Clés**")
-        st.progress(65, text="Sentiment Marché")
-        st.write("Le titre présente une volatilité annuelle de 18%.")
+    try:
+        data = yf.download(ticker, period="1y")
+        if not data.empty:
+            fig = go.Figure(data=[go.Scatter(x=data.index, y=data['Close'], line=dict(color='#B5A27B', width=2))])
+            fig.update_layout(template="plotly_dark", title=f"Évolution 12 mois : {ticker}", xaxis_title="Date", yaxis_title="Prix")
+            st.plotly_chart(fig, use_container_width=True)
+            
+            c1, c2 = st.columns(2)
+            c1.metric("Dernier Cours", f"{data['Close'].iloc[-1]:.2f} €")
+            perf = ((data['Close'].iloc[-1] / data['Close'].iloc[0]) - 1) * 100
+            c2.metric("Performance 12m", f"{perf:.2f}%")
+        else:
+            st.error("Données indisponibles pour ce ticker.")
+    except:
+        st.error("Erreur lors de la récupération des données.")
 
-# --- MODULE 2 : OPTIMISATION (MARKOWITZ) ---
-elif menu == "Optimisation Portefeuille":
-    st.header("⚖️ Analyse de Frontière Efficience")
-    st.write("Sélectionnez vos actifs pour optimiser le couple Rendement/Risque.")
-    
-    tickers = st.multiselect("Actifs du portefeuille", ["CW8.PA", "ESE.PA", "OR.PA", "AAPL", "MSFT"], default=["CW8.PA", "ESE.PA"])
-    
-    if tickers:
-        data = yf.download(tickers, period="3y")['Close']
-        returns = data.pct_change().dropna()
-        
-        # Stats simplifiées
-        port_return = returns.mean().sum() * 252
-        port_vol = returns.std().mean() * np.sqrt(252)
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            fig_pie = px.pie(values=[1/len(tickers)]*len(tickers), names=tickers, title="Allocation Actuelle", hole=0.4)
-            fig_pie.update_layout(template="plotly_dark")
-            st.plotly_chart(fig_pie)
-        
-        with c2:
-            st.metric("Rendement Espéré (Annuel)", f"{port_return*100:.2f}%")
-            st.metric("Volatilité (Risque)", f"{port_vol*100:.2f}%")
-            st.warning("Le ratio de Sharpe estimé est de 1.2. Portefeuille équilibré.")
-
-# --- MODULE 3 : IMMOBILIER ---
-elif menu == "Simulateur Immobilier (LMNP)":
-    st.header("🏠 Ingénierie Immobilière : LMNP au Réel")
-    
+elif menu == "Audit Fiscal (IR)":
+    st.title("⚖️ Optimisation Fiscale")
     col1, col2 = st.columns(2)
     with col1:
-        px_bien = st.number_input("Prix d'acquisition (€)", value=200000)
-        loyer = st.number_input("Loyer mensuel CC (€)", value=1100)
-        apport = st.number_input("Apport personnel (€)", value=40000)
+        rni = st.number_input("Revenu Net Imposable (€)", value=50000, step=1000)
+        parts = st.number_input("Nombre de parts", value=1.0, step=0.5)
+    
+    impot_total = calcul_ir(rni, parts)
+    tmi = 0
+    # Calcul TMI rapide
+    q = rni/parts
+    if q > 177106: tmi = 45
+    elif q > 82341: tmi = 41
+    elif q > 28797: tmi = 30
+    elif q > 11294: tmi = 11
     
     with col2:
-        taxe_f = st.number_input("Taxe foncière annuelle (€)", value=800)
-        charges = st.number_input("Charges de copro annuelles (€)", value=1200)
+        st.metric("Impôt estimé", f"{impot_total} €")
+        st.metric("Tranche Marginale (TMI)", f"{tmi}%")
+    
+    st.info(f"Une souscription au PER de 5 000 € vous ferait économiser environ {5000 * (tmi/100):.0f} € d'impôt.")
 
-    cf, fisc = simulate_lmnp(px_bien, loyer, charges, taxe_f, apport)
-    
-    res1, res2, res3 = st.columns(3)
-    res1.metric("Cash-Flow Net (Annuel)", f"{cf:.2f} €")
-    res2.metric("Base Imposable (après amort.)", f"{fisc:.2f} €", delta="Optimisé", delta_color="normal")
-    res3.metric("Rendement Brut", f"{(loyer*12/px_bien)*100:.2f}%")
+elif menu == "Immobilier (LMNP/Pinel)":
+    st.title("🏠 Simulation Immobilier")
+    px = st.number_input("Prix d'achat", value=150000)
+    loyer = st.number_input("Loyer mensuel HC", value=650)
+    rendement = (loyer * 12 / px) * 100
+    st.metric("Rendement Brut", f"{rendement:.2f}%")
+    st.write("Le régime LMNP (Loueur Meublé Non Professionnel) permettrait d'amortir le bien sur 25 ans, neutralisant l'impôt sur les loyers.")
 
-# --- MODULE 4 : FISCALITÉ & RETRAITE ---
-elif menu == "Audit Fiscal & Retraite":
-    st.header("⏳ Projection de Capital & Retraite")
+elif menu == "Projection Retraite":
+    st.title("⏳ Horizon Patrimonial")
+    age = st.slider("Âge actuel", 20, 65, 30)
+    versement = st.number_input("Versement mensuel (€)", value=300)
+    taux = st.slider("Rendement espéré (%)", 1, 10, 5)
     
-    cap_initial = st.number_input("Capital déjà constitué (€)", value=50000)
-    versement = st.slider("Versement mensuel (€)", 0, 5000, 500)
-    taux = st.slider("Taux de rendement annuel cible (%)", 1.0, 10.0, 5.0)
-    duree = st.slider("Horizon (années)", 5, 40, 20)
+    annees = 65 - age
+    capital = 0
+    for _ in range(annees * 12):
+        capital = (capital + versement) * (1 + (taux/100)/12)
     
-    # Calcul capitalisation
-    mois = np.arange(duree * 12)
-    capital_proj = [cap_initial * (1 + (taux/100)/12)**m + versement * (((1 + (taux/100)/12)**m - 1) / ((taux/100)/12)) for m in mois]
-    
-    fig_proj = go.Figure()
-    fig_proj.add_trace(go.Scatter(x=mois/12, y=capital_proj, fill='tozeroy', line_color='#B5A27B', name="Capital projeté"))
-    fig_proj.update_layout(template="plotly_dark", title="Évolution du patrimoine financier (Inflation non déduite)", 
-                          xaxis_title="Années", yaxis_title="Euros")
-    st.plotly_chart(fig_proj, use_container_width=True)
-    
-    st.success(f"À l'issue des {duree} ans, le capital estimé est de : {capital_proj[-1]:,.0f} €")
+    st.success(f"À 65 ans, votre capital projeté est de : {capital:,.0f} €")
