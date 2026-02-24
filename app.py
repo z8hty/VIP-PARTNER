@@ -8,6 +8,7 @@ import os
 import datetime
 from fpdf import FPDF
 
+# --- CONFIGURATION ---
 st.set_page_config(page_title="VIP PARTNER | Outils CGP", layout="wide", page_icon="💎")
 
 st.markdown("""
@@ -22,49 +23,48 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- CLASSE PDF GLOBALE ---
+# --- CLASSE PDF BLINDÉE ---
 class PDF(FPDF):
     def header(self):
         if os.path.exists("logo.png"):
             self.image("logo.png", 10, 8, 30)
         self.set_font("Helvetica", "B", 15)
         self.set_text_color(10, 26, 63)
-        self.cell(0, 10, "Bilan d'Expertise Patrimoniale", align="C", new_x="LMARGIN", new_y="NEXT")
+        self.cell(190, 10, "Bilan d'Expertise Patrimoniale", align="C", new_x="LMARGIN", new_y="NEXT")
         self.set_font("Helvetica", "I", 10)
-        self.cell(0, 10, f"Edite le {datetime.date.today().strftime('%d/%m/%Y')} - VIP PARTNER", align="C", new_x="LMARGIN", new_y="NEXT")
+        self.cell(190, 10, f"Edite le {datetime.date.today().strftime('%d/%m/%Y')} - VIP PARTNER", align="C", new_x="LMARGIN", new_y="NEXT")
         self.ln(10)
 
     def footer(self):
         self.set_y(-15)
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(128, 128, 128)
-        self.cell(0, 10, f"Page {self.page_no()} - Document confidentiel", align="C")
+        self.cell(190, 10, f"Page {self.page_no()} - Document confidentiel", align="C")
 
 def generer_bouton_pdf(titre, lignes_texte, nom_fichier):
-    """Générateur PDF blindé contre les crashs de caractères"""
+    """Générateur PDF corrigé : largeur fixe (190) pour empêcher le crash 'Not enough horizontal space'"""
     pdf = PDF()
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, titre, new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(190, 10, titre, new_x="LMARGIN", new_y="NEXT")
     pdf.ln(5)
     pdf.set_font("Helvetica", "", 12)
     
     for ligne in lignes_texte:
-        if ligne.strip() == "":
-            pdf.ln(5) # Gère les lignes vides proprement sans faire crasher fpdf
+        if str(ligne).strip() == "":
+            pdf.ln(5) 
         else:
-            # Nettoyage radical pour éviter l'erreur "Not enough horizontal space"
-            ligne_propre = ligne.replace("€", "euros").replace("->", "=>")
-            # Encodage ascii pour forcer la suppression des caractères invisibles
-            ligne_propre = ligne_propre.encode('ascii', 'ignore').decode('ascii')
-            # Le paramètre w=0 force la cellule à prendre toute la largeur
-            pdf.multi_cell(w=0, h=8, text=ligne_propre)
+            # Nettoyage des caractères et encodage sûr
+            ligne_propre = str(ligne).replace("€", "euros")
+            ligne_propre = ligne_propre.encode('latin-1', 'replace').decode('latin-1')
+            # Largeur fixe à 190mm pour garantir qu'il y a assez d'espace horizontal
+            pdf.multi_cell(w=190, h=8, text=ligne_propre)
     
     pdf.output("temp.pdf")
     with open("temp.pdf", "rb") as f:
         st.download_button(label=f"📥 Télécharger le PDF ({nom_fichier})", data=f, file_name=f"{nom_fichier}.pdf", mime="application/pdf")
 
-# --- FONCTIONS CACHÉES (MARCHÉS) ---
+# --- FONCTIONS MARCHÉS ---
 @st.cache_data(ttl=3600)
 def isin_to_ticker(user_input):
     val = user_input.strip().upper()
@@ -86,7 +86,7 @@ def fetch_market_data(ticker):
     return stock.history(period="5y")
 
 def determiner_devise(ticker):
-    if "-USD" in ticker.upper() or ticker.upper() in ["AAPL", "MSFT", "TSLA", "SPY"]: return "$"
+    if "-USD" in ticker.upper() or ticker.upper() in ["AAPL", "MSFT", "TSLA", "SPY", "URTH"]: return "$"
     elif ".L" in ticker.upper(): return "£"
     elif ".CHF" in ticker.upper(): return "CHF"
     return "€"
@@ -106,21 +106,21 @@ menu = st.sidebar.radio("Expertise Patrimoniale", [
 ])
 
 # ==========================================
-# MODULE 1 : MARCHÉS FINANCIERS (EXPERT COMPLET)
+# MODULE 1 : MARCHÉS FINANCIERS (ANALYSE BOOSTÉE)
 # ==========================================
 if menu == "1. Marchés Financiers (Expert)":
     st.title("📈 Analyse et Comparaison d'Actifs")
     st.markdown("Saisissez un ou plusieurs actifs séparés par une virgule (ex: `CW8.PA, LU1681043599, BTC-USD`).")
     
     col_input, col_period = st.columns([3, 1])
-    recherche_utilisateur = col_input.text_input("Actifs (ISIN ou Ticker) :", "AI.PA")
+    recherche_utilisateur = col_input.text_input("Actifs (ISIN ou Ticker) :", "CW8.PA")
     periode_affichage = col_period.selectbox("Période d'affichage", ["1 an", "3 ans", "5 ans"])
     
     actifs_bruts = [x.strip() for x in recherche_utilisateur.split(",") if x.strip()]
     
     if actifs_bruts:
         try:
-            # --- CAS 1 : UN SEUL ACTIF (ANALYSE TECHNIQUE POUSSÉE) ---
+            # --- CAS 1 : UN SEUL ACTIF ---
             if len(actifs_bruts) == 1:
                 ticker_final = isin_to_ticker(actifs_bruts[0])
                 if ticker_final:
@@ -128,7 +128,7 @@ if menu == "1. Marchés Financiers (Expert)":
                     if not data.empty:
                         devise = determiner_devise(ticker_final)
                         
-                        # Calculs indicateurs techniques
+                        # Indicateurs techniques
                         data['SMA50'] = data['Close'].rolling(window=50).mean()
                         data['SMA200'] = data['Close'].rolling(window=200).mean()
                         delta = data['Close'].diff()
@@ -153,10 +153,10 @@ if menu == "1. Marchés Financiers (Expert)":
                         c2.metric(f"Perf. ({periode_affichage})", f"{perf_periode:.2f} %")
                         c3.metric("Volatilité", f"{volatilite:.2f} %")
                         c4.metric("RSI 14j", f"{rsi_actuel:.1f}", 
-                                  delta="Surchat (>70)" if rsi_actuel > 70 else "Survente (<30)" if rsi_actuel < 30 else "Neutre",
+                                  delta="Surachat (>70)" if rsi_actuel > 70 else "Survente (<30)" if rsi_actuel < 30 else "Neutre",
                                   delta_color="inverse" if rsi_actuel > 70 or rsi_actuel < 30 else "off")
                         
-                        # Graphique complet
+                        # Graphique
                         fig = go.Figure()
                         fig.add_trace(go.Candlestick(x=df_display.index, open=df_display['Open'], high=df_display['High'], low=df_display['Low'], close=df_display['Close'], name="Cours"))
                         fig.add_trace(go.Scatter(x=df_display.index, y=df_display['SMA50'], line=dict(color='blue', width=1), name="Moy. 50j"))
@@ -164,23 +164,58 @@ if menu == "1. Marchés Financiers (Expert)":
                         fig.update_layout(title=f"Analyse Technique : {ticker_final}", yaxis_title=f"Prix ({devise})", xaxis_rangeslider_visible=False, height=500)
                         st.plotly_chart(fig, theme="streamlit", use_container_width=True)
                         
-                        # PDF
+                        # --- CONSEILS AUTOMATIQUES EXPERTS ---
+                        st.markdown("### 💡 Interprétation & Conseils")
+                        
+                        # 1. Tendance de fond
+                        if prix_actuel > df_display['SMA200'].iloc[-1]:
+                            st.success(f"**Tendance de fond : Haussière 🟢.** Le cours actuel est au-dessus de sa moyenne à 200 jours. Les flux institutionnels sont globalement acheteurs.")
+                        else:
+                            st.error(f"**Tendance de fond : Baissière 🔴.** Le cours est sous sa moyenne à 200 jours. L'actif est dans une phase de correction lourde.")
+                        
+                        # 2. Dynamique Moyen Terme (Croisement)
+                        if df_display['SMA50'].iloc[-1] > df_display['SMA200'].iloc[-1]:
+                            st.write("- **Dynamique croisée :** Configuration positive (Golden Cross). La tendance récente est plus forte que la tendance longue.")
+                        else:
+                            st.write("- **Dynamique croisée :** Configuration fragile (Death Cross). La pression vendeuse s'accélère à court terme.")
+                            
+                        # 3. RSI
+                        if rsi_actuel >= 70:
+                            st.warning("- **Analyse RSI (Surchauffe) :** L'actif est en zone de surachat. Une prise de bénéfice des marchés ou une correction technique est probable à court terme. Prudence sur les gros versements immédiats.")
+                        elif rsi_actuel <= 30:
+                            st.success("- **Analyse RSI (Survente) :** L'actif a été massivement vendu. Historiquement, c'est souvent un point d'entrée tactique intéressant pour investir.")
+                        else:
+                            st.info("- **Analyse RSI (Neutre) :** Le marché respire normalement. Pas d'excès détecté.")
+                        
+                        # 4. Volatilité
+                        if volatilite > 25:
+                            st.write("- **Profil de Risque :** Haute volatilité. Cet actif est très spéculatif ou subit des turbulences. À réserver aux profils dynamiques.")
+                        elif volatilite < 10:
+                            st.write("- **Profil de Risque :** Faible volatilité. Actif défensif, idéal pour un profil prudent (Père de famille).")
+                        else:
+                            st.write("- **Profil de Risque :** Volatilité classique pour le marché actions.")
+
+                        # --- PDF ---
                         st.markdown("---")
                         lignes_pdf = [
                             f"Analyse de l'actif : {ticker_final}",
                             f"Periode observee : {periode_affichage}",
                             "",
                             f"- Cours actuel : {prix_actuel:,.2f} {devise}",
-                            f"- Performance sur la periode : {perf_periode:.2f} %",
-                            f"- Volatilite (Risque) : {volatilite:.2f} %",
-                            f"- Indicateur RSI (Tension du marche) : {rsi_actuel:.1f} / 100"
+                            f"- Performance : {perf_periode:.2f} %",
+                            f"- Volatilite : {volatilite:.2f} %",
+                            f"- Indicateur RSI : {rsi_actuel:.1f} / 100",
+                            "",
+                            "Avis Synthetique de l'algorithme :",
+                            "Tendance Haussiere" if prix_actuel > df_display['SMA200'].iloc[-1] else "Tendance Baissiere",
+                            "Surchauffe (Surachat) - Prudence" if rsi_actuel >= 70 else "Decote (Survente) - Point d'entree possible" if rsi_actuel <= 30 else "Marche Neutre"
                         ]
                         generer_bouton_pdf(f"Fiche Valeur - {ticker_final}", lignes_pdf, "Bilan_Marche")
 
                     else:
                         st.warning(f"Aucune donnée pour {ticker_final}")
             
-            # --- CAS 2 : PLUSIEURS ACTIFS (COMPARAISON BASE 100) ---
+            # --- CAS 2 : PLUSIEURS ACTIFS ---
             else:
                 st.info("Comparaison en Base 100 : Tous les actifs partent de la valeur 100 pour comparer leur croissance exacte.")
                 fig = go.Figure()
@@ -195,7 +230,6 @@ if menu == "1. Marchés Financiers (Expert)":
                             elif periode_affichage == "3 ans": df_display = data.last('1095D')
                             else: df_display = data
                             
-                            # Calcul Base 100
                             base_100 = (df_display['Close'] / df_display['Close'].iloc[0]) * 100
                             fig.add_trace(go.Scatter(x=df_display.index, y=base_100, mode='lines', name=ticker_final))
                             
@@ -212,7 +246,7 @@ if menu == "1. Marchés Financiers (Expert)":
             st.error("⚠️ Yahoo Finance bloque temporairement l'accès (Rate Limit). Attendez une minute et réessayez.")
 
 # ==========================================
-# MODULE 2 : CAPITALISATION (AVEC PDF FIXÉ)
+# MODULE 2 : CAPITALISATION (INTACT)
 # ==========================================
 elif menu == "2. Capitalisation & Fiscalité":
     st.title("💰 Croissance & Fiscalité")
@@ -242,23 +276,23 @@ elif menu == "2. Capitalisation & Fiscalité":
     
     st.markdown("---")
     lignes_pdf = [
-        f"Hypotheses retenues :",
+        "Hypotheses retenues :",
         f"- Capital de depart : {capital_init:,.0f} euros",
         f"- Effort d'epargne : {versement:,.0f} euros / mois",
         f"- Rendement annuel brut : {taux_brut} %",
         f"- Duree de placement : {annees} ans",
         "",
-        f"Resultats a terme :",
+        "Resultats a terme :",
         f"- Capital total brut : {cap:,.0f} euros",
         f"- Dont plus-values latentes : {plus_values:,.0f} euros",
         f"- Fiscalite a la sortie (PFU 30%) : - {pfu:,.0f} euros",
         "",
-        f"=> CAPITAL NET D'IMPOT : {capital_net:,.0f} euros"
+        f"Resultat Net d'Impot : {capital_net:,.0f} euros"
     ]
     generer_bouton_pdf("Bilan de Capitalisation", lignes_pdf, "Bilan_Capitalisation")
 
 # ==========================================
-# MODULE 3 : IFI
+# MODULE 3 : IFI (INTACT)
 # ==========================================
 elif menu == "3. Impôt sur la Fortune (IFI)":
     st.title("🏛️ Simulateur IFI")
@@ -292,19 +326,19 @@ elif menu == "3. Impôt sur la Fortune (IFI)":
 
     st.markdown("---")
     lignes_pdf = [
-        f"Base taxable retenue :",
+        "Base taxable retenue :",
         f"- Valeur de la Residence Principale : {rp:,.0f} euros",
         f"- Application abattement legal 30% : - {rp - rp_nette:,.0f} euros",
         f"- Autres actifs immobiliers (locatif, SCPI) : {autre_immo:,.0f} euros",
-        f"- Dettes deductibles (capital restant du) : - {dettes:,.0f} euros",
+        f"- Dettes deductibles (capital restant) : - {dettes:,.0f} euros",
         "",
-        f"=> PATRIMOINE NET TAXABLE IFI : {patrimoine_net_taxable:,.0f} euros",
-        f"=> IMPOT SUR LA FORTUNE ESTIME : {ifi:,.0f} euros / an"
+        f"Patrimoine Net Taxable IFI : {patrimoine_net_taxable:,.0f} euros",
+        f"Impot sur la Fortune Estime : {ifi:,.0f} euros / an"
     ]
     generer_bouton_pdf("Audit IFI", lignes_pdf, "Bilan_IFI")
 
 # ==========================================
-# MODULE 4 : TRANSMISSION
+# MODULE 4 : TRANSMISSION (INTACT)
 # ==========================================
 elif menu == "4. Transmission & Démembrement":
     st.title("👨‍👩‍👧‍👦 Démembrement de Propriété")
@@ -332,18 +366,17 @@ elif menu == "4. Transmission & Démembrement":
 
     st.markdown("---")
     lignes_pdf = [
-        f"Hypotheses de demembrement (Art. 669 CGI) :",
+        "Hypotheses de demembrement (Art. 669 CGI) :",
         f"- Age de l'usufruitier : {age_donateur} ans",
         f"- Valeur du patrimoine en pleine propriete : {valeur_bien:,.0f} euros",
         "",
-        f"Reppartition des droits :",
+        "Repartition des droits :",
         f"- Valeur de l'usufruit ({u_pct*100:.0f}%) : {val_u:,.0f} euros",
         f"- Valeur de la nue-propriete ({n_pct*100:.0f}%) : {val_n:,.0f} euros",
         "",
-        f"Conclusion strategique :",
-        f"Les droits de succession/donation seront calcules sur une assiette",
-        f"reduite de {val_n:,.0f} euros. Au deces de l'usufruitier, la pleine",
-        f"propriete est reconstituee entre les mains du nu-proprietaire en",
-        f"totale franchise d'impot."
+        "Conclusion strategique :",
+        f"Les droits de succession/donation seront calcules sur une assiette reduite de {val_n:,.0f} euros.",
+        "Au deces de l'usufruitier, la pleine propriete est reconstituee",
+        "sans impots supplementaires."
     ]
     generer_bouton_pdf("Strategie de Transmission", lignes_pdf, "Bilan_Transmission")
