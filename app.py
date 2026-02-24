@@ -159,4 +159,65 @@ elif menu == "4. Fiscalité (IR & IFI)":
     tab1, tab2 = st.tabs(["Impôt sur le Revenu (IR)", "Impôt sur la Fortune Immobilière (IFI)"])
     
     with tab1:
-        st.subheader("Calcul
+        st.subheader("Calculateur IR Barème 2024")
+        c1, c2 = st.columns(2)
+        rni = c1.number_input("Revenu Net Imposable global (€)", value=60000, step=1000)
+        parts = c2.number_input("Nombre de parts fiscales", value=2.0, step=0.5)
+        
+        impot = calcul_ir(rni, parts)
+        q = rni / parts
+        tmi = 0
+        if q > 177106: tmi = 45
+        elif q > 82341: tmi = 41
+        elif q > 28797: tmi = 30
+        elif q > 11294: tmi = 11
+        
+        r1, r2 = st.columns(2)
+        r1.metric("Montant de l'Impôt estimé", f"{impot:,.0f} €".replace(',', ' '))
+        r2.metric("Tranche Marginale d'Imposition (TMI)", f"{tmi} %")
+        st.info(f"💡 Un versement PER de 10 000 € génèrera une économie d'impôt de {10000 * (tmi/100):.0f} €.")
+
+    with tab2:
+        st.subheader("Simulateur IFI")
+        patrimoine_immo = st.number_input("Patrimoine Immobilier Net Taxable (€)", value=1200000, step=50000)
+        
+        ifi = 0
+        if patrimoine_immo > 1300000:
+            if patrimoine_immo > 10000000: ifi += (patrimoine_immo - 10000000) * 0.015; patrimoine_immo = 10000000
+            if patrimoine_immo > 5000000: ifi += (patrimoine_immo - 5000000) * 0.0125; patrimoine_immo = 5000000
+            if patrimoine_immo > 2570000: ifi += (patrimoine_immo - 2570000) * 0.01; patrimoine_immo = 2570000
+            if patrimoine_immo > 1300000: ifi += (patrimoine_immo - 1300000) * 0.007; patrimoine_immo = 1300000
+            if patrimoine_immo > 800000: ifi += (patrimoine_immo - 800000) * 0.005
+            
+            # Décote simplifiée pour les patrimoines entre 1.3M et 1.4M
+            if 1300000 < st.session_state.get('patrimoine_immo', patrimoine_immo) < 1400000:
+                decote = 17500 - (1.25 * patrimoine_immo) # Formule simplifiée
+                ifi = max(0, ifi - decote)
+                
+            st.error(f"Patrimoine assujetti à l'IFI. Montant estimé : {ifi:,.0f} €")
+        else:
+            st.success("Patrimoine inférieur à 1 300 000 €. Non assujetti à l'IFI.")
+
+# ==========================================
+# MODULE 5 : TRANSMISSION
+# ==========================================
+elif menu == "5. Transmission & Succession":
+    st.title("👨‍👩‍👧‍👦 Transmission & Droits de succession")
+    st.write("Calcul des abattements en ligne directe (Parents vers Enfants).")
+    
+    patrimoine_transmis = st.number_input("Patrimoine total à transmettre (€)", value=500000, step=10000)
+    nb_enfants = st.number_input("Nombre d'enfants", value=2, step=1)
+    
+    if nb_enfants > 0:
+        part_par_enfant = patrimoine_transmis / nb_enfants
+        # Abattement de 100 000 € par enfant
+        base_taxable_par_enfant = max(0, part_par_enfant - 100000)
+        
+        c1, c2 = st.columns(2)
+        c1.metric("Part brute par enfant", f"{part_par_enfant:,.0f} €".replace(',', ' '))
+        c2.metric("Base taxable (après abattement 100k)", f"{base_taxable_par_enfant:,.0f} €".replace(',', ' '))
+        
+        if base_taxable_par_enfant > 0:
+            st.warning("⚠️ Des droits de succession seront à payer. Une stratégie d'Assurance-Vie ou de démembrement est recommandée.")
+        else:
+            st.success("✅ Aucune fiscalité à prévoir sur cette transmission grâce aux abattements.")
