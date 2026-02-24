@@ -55,40 +55,159 @@ menu = st.sidebar.radio("Expertise Patrimoniale", [
 # ==========================================
 # MODULE 1 : MARCHÉS FINANCIERS
 # ==========================================
-if menu == "1. Marchés Financiers":
-    st.title("📈 Analyse des Supports")
-    ticker = st.text_input("Ticker (ex: CW8.PA, AI.PA, BTC-USD, AAPL)", "BTC-USD")
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+import os
+
+st.set_page_config(page_title="VIP PARTNER | Outils CGP", layout="wide", page_icon="💎")
+
+st.markdown("""
+    <style>
+    div[data-testid="metric-container"] {
+        background-color: rgba(181, 162, 123, 0.1);
+        border-left: 5px solid #B5A27B;
+        padding: 10px 20px;
+        border-radius: 5px;
+    }
+    h1, h2, h3 { color: #B5A27B !important; font-family: 'Arial', sans-serif; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- FONCTIONS CACHÉES POUR ÉVITER LE BLOCAGE (Rate Limit) ---
+@st.cache_data(ttl=3600) # Garde en mémoire pendant 1h
+def fetch_market_data(ticker):
+    stock = yf.Ticker(ticker)
+    data = stock.history(period="5y") # On récupère 5 ans pour les moyennes longues
+    return data
+
+def determiner_devise(ticker):
+    if "-USD" in ticker.upper() or ticker.upper() in ["AAPL", "MSFT", "TSLA", "SPY", "URTH"]: return "$"
+    elif ".L" in ticker.upper(): return "£"
+    elif ".CHF" in ticker.upper(): return "CHF"
+    return "€"
+
+def calcul_usufruit_nue_prop(age):
+    if age <= 20: return 0.9, 0.1
+    elif age <= 30: return 0.8, 0.2
+    elif age <= 40: return 0.7, 0.3
+    elif age <= 50: return 0.6, 0.4
+    elif age <= 60: return 0.5, 0.5
+    elif age <= 70: return 0.4, 0.6
+    elif age <= 80: return 0.3, 0.7
+    elif age <= 90: return 0.2, 0.8
+    else: return 0.1, 0.9
+
+# --- SIDEBAR ---
+# VERIFIE LE NOM DE TON FICHIER ICI : S'il s'appelle Logo.png sur github, change la ligne ci-dessous.
+chemin_logo = "logo.png" 
+
+if os.path.exists(chemin_logo):
+    st.sidebar.image(chemin_logo, use_column_width=True)
+else:
+    st.sidebar.markdown("## 💎 VIP PARTNER")
+
+st.sidebar.markdown("---")
+menu = st.sidebar.radio("Expertise Patrimoniale", [
+    "1. Marchés Financiers (Expert)", 
+    "2. Capitalisation & Fiscalité", 
+    "3. Impôt sur la Fortune (IFI)", 
+    "4. Transmission & Démembrement"
+])
+
+# ==========================================
+# MODULE 1 : MARCHÉS FINANCIERS (COMPLEXIFIÉ)
+# ==========================================
+if menu == "1. Marchés Financiers (Expert)":
+    st.title("📈 Analyse Technique & Fondamentale")
+    st.markdown("Recherchez un actif via son **Ticker officiel** (Ex: `CW8.PA` pour Amundi MSCI World, `AI.PA` pour Air Liquide, `BTC-USD` pour Bitcoin).")
+    
+    col_input, col_period = st.columns([3, 1])
+    ticker = col_input.text_input("Ticker Yahoo Finance :", "CW8.PA")
+    periode_affichage = col_period.selectbox("Période d'affichage", ["1 an", "3 ans", "5 ans"])
     
     try:
-        stock = yf.Ticker(ticker)
-        data = stock.history(period="1y")
+        # Récupération des données avec le cache
+        data = fetch_market_data(ticker)
         
         if not data.empty:
             devise = determiner_devise(ticker)
             
+            # Calcul des indicateurs techniques
+            data['SMA50'] = data['Close'].rolling(window=50).mean()
+            data['SMA200'] = data['Close'].rolling(window=200).mean()
+            
+            # Calcul RSI
+            delta = data['Close'].diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            rs = gain / loss
+            data['RSI'] = 100 - (100 / (1 + rs))
+            
+            # Filtrage selon la période choisie pour l'affichage
+            if periode_affichage == "1 an":
+                df_display = data.last('365D')
+            elif periode_affichage == "3 ans":
+                df_display = data.last('1095D')
+            else:
+                df_display = data
+            
+            # --- MÉTRIQUES CLÉS ---
             c1, c2, c3, c4 = st.columns(4)
-            current_price = data['Close'].iloc[-1]
-            first_price = data['Close'].iloc[0]
-            perf = ((current_price / first_price) - 1) * 100
-            volatility = data['Close'].pct_change().std() * np.sqrt(252) * 100
+            prix_actuel = df_display['Close'].iloc[-1]
+            prix_debut = df_display['Close'].iloc[0]
+            perf_periode = ((prix_actuel / prix_debut) - 1) * 100
             
-            # Calcul du Max Drawdown (Perte maximale)
-            roll_max = data['Close'].cummax()
-            drawdown = data['Close'] / roll_max - 1.0
-            max_drawdown = drawdown.min() * 100
+            rsi_actuel = df_display['RSI'].iloc[-1]
+            volatilite = df_display['Close'].pct_change().std() * np.sqrt(252) * 100
             
-            c1.metric("Dernier Cours", f"{current_price:,.2f} {devise}")
-            c2.metric("Performance 1 an", f"{perf:.2f} %")
-            c3.metric("Volatilité", f"{volatility:.2f} %")
-            c4.metric("Max Drawdown", f"{max_drawdown:.2f} %")
+            c1.metric("Dernier Cours", f"{prix_actuel:,.2f} {devise}")
+            c2.metric(f"Perf. {periode_affichage}", f"{perf_periode:.2f} %")
+            c3.metric("Volatilité (Risque)", f"{volatilite:.2f} %")
+            c4.metric("RSI 14j", f"{rsi_actuel:.1f}", 
+                      delta="Surchat (>70)" if rsi_actuel > 70 else "Survente (<30)" if rsi_actuel < 30 else "Neutre",
+                      delta_color="inverse" if rsi_actuel > 70 or rsi_actuel < 30 else "off")
             
-            fig = go.Figure(data=[go.Scatter(x=data.index, y=data['Close'], line=dict(color='#B5A27B', width=2))])
-            fig.update_layout(title=f"Historique {ticker} (en {devise})", xaxis_title="Date", yaxis_title=f"Prix ({devise})")
+            # --- GRAPHIQUE CHANDELIERS AVANCÉ ---
+            fig = go.Figure()
+            
+            # Cours en bougies (Candlestick)
+            fig.add_trace(go.Candlestick(x=df_display.index, open=df_display['Open'], high=df_display['High'], low=df_display['Low'], close=df_display['Close'], name="Cours"))
+            
+            # Moyennes Mobiles
+            fig.add_trace(go.Scatter(x=df_display.index, y=df_display['SMA50'], line=dict(color='blue', width=1), name="Moyenne 50j"))
+            fig.add_trace(go.Scatter(x=df_display.index, y=df_display['SMA200'], line=dict(color='orange', width=1.5), name="Moyenne 200j (Tendance longue)"))
+            
+            fig.update_layout(
+                title=f"Analyse Graphique - {ticker}",
+                yaxis_title=f"Prix ({devise})",
+                xaxis_rangeslider_visible=False,
+                height=600,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
             st.plotly_chart(fig, theme="streamlit", use_container_width=True)
+            
+            # Interprétation auto pour le client
+            st.subheader("💡 Interprétation Rapide")
+            tendance = "Haussière 🟢" if prix_actuel > df_display['SMA200'].iloc[-1] else "Baissière 🔴"
+            st.write(f"- **Tendance de fond (Moyenne 200j) :** La tendance long terme est **{tendance}**.")
+            if rsi_actuel > 70:
+                st.warning("- **Indicateur RSI :** L'actif est potentiellement en surchauffe (surachat). Un risque de correction à court terme existe.")
+            elif rsi_actuel < 30:
+                st.success("- **Indicateur RSI :** L'actif a été fortement vendu (survente). Cela peut représenter un point d'entrée intéressant.")
+            else:
+                st.info("- **Indicateur RSI :** Le marché est dans une zone neutre, pas d'excès à court terme.")
+
         else:
-            st.warning("Aucune donnée pour ce ticker.")
+            st.warning("Aucune donnée trouvée. Vérifiez que vous avez bien tapé un Ticker officiel (ex: LVMH s'écrit MC.PA).")
     except Exception as e:
-        st.error(f"Erreur de connexion : {e}")
+        st.error(f"Erreur de connexion aux marchés. L'actif n'existe pas ou le serveur bloque : {e}")
+
+# ==========================================
+# (Garde les modules 2, 3 et 4 identiques au code précédent)
+# ==========================================
 
 # ==========================================
 # MODULE 2 : CAPITALISATION & PFU
