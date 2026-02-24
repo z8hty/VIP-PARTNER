@@ -19,63 +19,6 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- FONCTIONS MÉTIERS ---
-def determiner_devise(ticker):
-    if "-USD" in ticker.upper() or ticker.upper() in ["AAPL", "MSFT", "TSLA", "SPY"]: return "$"
-    elif ".L" in ticker.upper(): return "£"
-    elif ".CHF" in ticker.upper(): return "CHF"
-    return "€"
-
-def calcul_usufruit_nue_prop(age):
-    """Article 669 du CGI"""
-    if age <= 20: return 0.9, 0.1
-    elif age <= 30: return 0.8, 0.2
-    elif age <= 40: return 0.7, 0.3
-    elif age <= 50: return 0.6, 0.4
-    elif age <= 60: return 0.5, 0.5
-    elif age <= 70: return 0.4, 0.6
-    elif age <= 80: return 0.3, 0.7
-    elif age <= 90: return 0.2, 0.8
-    else: return 0.1, 0.9
-
-# --- SIDEBAR ---
-if os.path.exists("logo.png"):
-    st.sidebar.image("logo.png", use_column_width=True)
-else:
-    st.sidebar.markdown("## 💎 VIP PARTNER")
-
-st.sidebar.markdown("---")
-menu = st.sidebar.radio("Expertise Patrimoniale", [
-    "1. Marchés Financiers", 
-    "2. Capitalisation & Fiscalité", 
-    "3. Impôt sur la Fortune (IFI)", 
-    "4. Transmission & Démembrement"
-])
-
-# ==========================================
-# MODULE 1 : MARCHÉS FINANCIERS
-# ==========================================
-import streamlit as st
-import yfinance as yf
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-import os
-
-st.set_page_config(page_title="VIP PARTNER | Outils CGP", layout="wide", page_icon="💎")
-
-st.markdown("""
-    <style>
-    div[data-testid="metric-container"] {
-        background-color: rgba(181, 162, 123, 0.1);
-        border-left: 5px solid #B5A27B;
-        padding: 10px 20px;
-        border-radius: 5px;
-    }
-    h1, h2, h3 { color: #B5A27B !important; font-family: 'Arial', sans-serif; }
-    </style>
-    """, unsafe_allow_html=True)
-
 # --- FONCTIONS CACHÉES POUR ÉVITER LE BLOCAGE (Rate Limit) ---
 @st.cache_data(ttl=3600) # Garde en mémoire pendant 1h
 def fetch_market_data(ticker):
@@ -204,10 +147,7 @@ if menu == "1. Marchés Financiers (Expert)":
             st.warning("Aucune donnée trouvée. Vérifiez que vous avez bien tapé un Ticker officiel (ex: LVMH s'écrit MC.PA).")
     except Exception as e:
         st.error(f"Erreur de connexion aux marchés. L'actif n'existe pas ou le serveur bloque : {e}")
-
-# ==========================================
-# (Garde les modules 2, 3 et 4 identiques au code précédent)
-# ==========================================
+        
 
 # ==========================================
 # MODULE 2 : CAPITALISATION & PFU
