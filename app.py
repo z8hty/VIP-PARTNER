@@ -28,14 +28,14 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- MOTEUR PDF PREMIUM ---
+# --- MOTEUR PDF PREMIUM CORRIGÉ ---
 class PDF(FPDF):
     def header(self):
         # Affiché sur toutes les pages sauf la page de garde
         if self.page_no() > 1:
             self.set_font("Helvetica", "B", 10)
             self.set_text_color(181, 162, 123) # Or
-            self.cell(0, 10, "VIP PARTNER - Cockpit Financier", align="R", new_x="LMARGIN", new_y="NEXT")
+            self.cell(190, 10, "VIP PARTNER - Cockpit Financier", align="R", new_x="LMARGIN", new_y="NEXT")
             self.line(10, 20, 200, 20)
             self.ln(5)
 
@@ -43,14 +43,15 @@ class PDF(FPDF):
         self.set_y(-15)
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(128, 128, 128)
-        self.cell(0, 10, f"Page {self.page_no()} - Document strictement confidentiel generé le {datetime.date.today().strftime('%d/%m/%Y')}", align="C")
+        self.cell(190, 10, f"Page {self.page_no()} - Document strictement confidentiel generé le {datetime.date.today().strftime('%d/%m/%Y')}", align="C")
 
 def generer_pdf_premium(titre_doc, sections, nom_fichier):
     """
-    Générateur de PDF de luxe.
-    sections = [ ("Titre Section", ["ligne 1", "ligne 2..."]) ]
+    Générateur de PDF de luxe avec gestion stricte de la largeur pour éviter les crashs FPDF.
     """
     pdf = PDF()
+    pdf.set_margins(left=10, top=10, right=10)
+    pdf.set_auto_page_break(auto=True, margin=15)
     
     # --- PAGE DE GARDE ---
     pdf.add_page()
@@ -60,16 +61,16 @@ def generer_pdf_premium(titre_doc, sections, nom_fichier):
     pdf.set_y(100)
     pdf.set_font("Helvetica", "B", 24)
     pdf.set_text_color(10, 26, 63) # Bleu Nuit
-    pdf.cell(0, 15, "BILAN FINANCIER", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(190, 15, "BILAN FINANCIER", align="C", new_x="LMARGIN", new_y="NEXT")
     
     pdf.set_font("Helvetica", "", 16)
     pdf.set_text_color(181, 162, 123) # Or
-    pdf.cell(0, 10, titre_doc.upper(), align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(190, 10, titre_doc.upper(), align="C", new_x="LMARGIN", new_y="NEXT")
     
     pdf.set_y(250)
     pdf.set_font("Helvetica", "I", 12)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 10, "Edite par VIP PARTNER", align="C", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(190, 10, "Edite par VIP PARTNER", align="C", new_x="LMARGIN", new_y="NEXT")
     
     # --- CONTENU ---
     pdf.add_page()
@@ -78,22 +79,20 @@ def generer_pdf_premium(titre_doc, sections, nom_fichier):
         pdf.set_fill_color(10, 26, 63) # Fond Bleu Nuit
         pdf.set_text_color(181, 162, 123) # Texte Or
         pdf.set_font("Helvetica", "B", 14)
-        pdf.cell(0, 10, f"  {titre_section}", fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(190, 10, f"  {titre_section}", fill=True, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(4)
         
         # Lignes de texte
-        pdf.set_text_color(0, 0, 0)
-        pdf.set_font("Helvetica", "", 11)
-        
         for ligne in lignes:
-            if ligne == "":
+            if str(ligne).strip() == "":
                 pdf.ln(4)
             else:
-                # Nettoyage pour FPDF
+                # Nettoyage strict pour FPDF
                 l_propre = str(ligne).replace("€", "EUR").replace("%", "pourcents").replace("->", "=>")
-                l_propre = l_propre.encode('latin-1', 'replace').decode('latin-1')
+                # On force l'encodage pour virer les caractères invisibles qui font planter
+                l_propre = l_propre.encode('latin-1', 'ignore').decode('latin-1')
                 
-                # Mise en gras conditionnelle si la ligne commence par "=>" ou "TOTAL"
+                # Mise en gras conditionnelle
                 if l_propre.startswith("=>") or "TOTAL" in l_propre.upper() or "NET" in l_propre.upper():
                     pdf.set_font("Helvetica", "B", 11)
                     pdf.set_text_color(10, 26, 63)
@@ -101,7 +100,8 @@ def generer_pdf_premium(titre_doc, sections, nom_fichier):
                     pdf.set_font("Helvetica", "", 11)
                     pdf.set_text_color(30, 30, 30)
                 
-                pdf.multi_cell(0, 8, l_propre)
+                # CORRECTION CRUCIALE : On fixe w=190 pour empêcher l'erreur 'not enough horizontal space'
+                pdf.multi_cell(w=190, h=8, text=l_propre)
         pdf.ln(8)
     
     pdf.output("temp_luxe.pdf")
@@ -109,7 +109,7 @@ def generer_pdf_premium(titre_doc, sections, nom_fichier):
         st.download_button(label=f"📥 Télécharger le Rapport PDF Pro ({nom_fichier})", data=f, file_name=f"{nom_fichier}.pdf", mime="application/pdf")
 
 # --- FONCTIONS DONNÉES EN DIRECT ---
-@st.cache_data(ttl=900) # Cache de 15 min pour le live tracker
+@st.cache_data(ttl=900)
 def get_live_price(ticker):
     val = ticker.strip().upper()
     try:
@@ -171,7 +171,6 @@ if menu == "1. Tableau de Bord Global":
 
     patrimoine_net = total_actifs - total_passifs
     
-    # --- Ratios Financiers Experts ---
     ratio_endettement = (total_passifs / total_actifs * 100) if total_actifs > 0 else 0
     ratio_liquidite = (liquidites / total_actifs * 100) if total_actifs > 0 else 0
     
@@ -183,7 +182,6 @@ if menu == "1. Tableau de Bord Global":
     c3.metric("💰 PATRIMOINE NET", f"{patrimoine_net:,.0f} €".replace(',', ' '))
     c4.metric("Ratio d'Endettement", f"{ratio_endettement:.1f} %", "Idéal < 33%", delta_color="off")
     
-    # Graphique de répartition
     fig = px.pie(
         values=[immo, liquidites, investissements, assurances_vie, autres_actifs], 
         names=["Immobilier", "Liquidités", "Bourse/Crypto", "Fonds Euros", "Autres"],
@@ -192,7 +190,6 @@ if menu == "1. Tableau de Bord Global":
     fig.update_layout(title="Allocation du Patrimoine Brut", template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- EXPORT PDF ---
     st.markdown("---")
     sections_pdf = [
         ("Synthese des Actifs", [
@@ -249,7 +246,6 @@ elif menu == "2. Gestion du Budget":
     r2.metric("Total Dépenses", f"{total_depenses:,.0f} €".replace(',', ' '))
     r3.metric("Cash-Flow Libre (Non alloué)", f"{reste_a_vivre:,.0f} €".replace(',', ' '), delta="Surplus à investir" if reste_a_vivre >= 0 else "Déficit budgétaire", delta_color="normal" if reste_a_vivre >= 0 else "inverse")
 
-    # --- Graphique Waterfall (Cascade) hyper visuel ---
     fig_waterfall = go.Figure(go.Waterfall(
         name="Budget", orientation="v",
         measure=["relative", "relative", "relative", "relative", "relative", "total"],
@@ -264,7 +260,6 @@ elif menu == "2. Gestion du Budget":
     fig_waterfall.update_layout(title="Cascade du Budget Mensuel", template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig_waterfall, use_container_width=True)
 
-    # --- PDF ---
     st.markdown("---")
     sections_pdf = [
         ("Flux Entrants (Revenus)", [
@@ -282,9 +277,9 @@ elif menu == "2. Gestion du Budget":
             f"=> RESTE A VIVRE (Libre) : {reste_a_vivre:,.0f} EUR",
             "",
             "Conformite a la regle 50/30/20 :",
-            f"- Besoins (Ideal 50%) : {(charges_fixes/total_revenus*100):.1f} %",
-            f"- Plaisirs (Ideal 30%) : {(depenses_plaisir/total_revenus*100):.1f} %",
-            f"- Epargne (Ideal 20%) : {(epargne_invest/total_revenus*100):.1f} %"
+            f"- Besoins (Ideal 50 pourcents) : {(charges_fixes/total_revenus*100):.1f} pourcents",
+            f"- Plaisirs (Ideal 30 pourcents) : {(depenses_plaisir/total_revenus*100):.1f} pourcents",
+            f"- Epargne (Ideal 20 pourcents) : {(epargne_invest/total_revenus*100):.1f} pourcents"
         ])
     ]
     generer_pdf_premium("Analyse Budgetaire", sections_pdf, "Cockpit_Budget")
@@ -296,7 +291,6 @@ elif menu == "3. Portefeuille Live (Expert)":
     st.title("📈 Portefeuille Dynamique & Plus-Values")
     st.write("Saisissez vos positions. Le tableau se met à jour en temps réel avec les prix du marché.")
     
-    # Création du DataFrame éditable en session_state
     if "portfolio" not in st.session_state:
         st.session_state.portfolio = pd.DataFrame({
             "Ticker (ISIN/Symbole)": ["CW8.PA", "BTC-USD", "AAPL"],
@@ -306,7 +300,6 @@ elif menu == "3. Portefeuille Live (Expert)":
     
     st.info("💡 Ajoutez, modifiez ou supprimez des lignes directement dans le tableau ci-dessous.")
     
-    # Le composant magique de Streamlit
     edited_df = st.data_editor(st.session_state.portfolio, num_rows="dynamic", use_container_width=True)
     st.session_state.portfolio = edited_df
     
@@ -318,8 +311,11 @@ elif menu == "3. Portefeuille Live (Expert)":
         with st.spinner("Récupération des cours en direct..."):
             for index, row in edited_df.iterrows():
                 ticker_input = str(row["Ticker (ISIN/Symbole)"])
-                qty = float(row["Quantité"])
-                pru = float(row["Prix de Revient Unitaire (€/$)"])
+                try:
+                    qty = float(row["Quantité"])
+                    pru = float(row["Prix de Revient Unitaire (€/$)"])
+                except:
+                    continue
                 
                 if ticker_input and qty > 0:
                     prix_actuel, vrai_ticker = get_live_price(ticker_input)
@@ -356,10 +352,9 @@ elif menu == "3. Portefeuille Live (Expert)":
             c2.metric("Valorisation Directe", f"{total_actuel:,.2f}")
             c3.metric("Plus-Value Latente", f"{pnl_global:,.2f}", f"{perf_globale:.2f} %")
             
-            # --- PDF ---
             lignes_pdf_pos = []
             for item in result_data:
-                lignes_pdf_pos.append(f"- {item['Actif']} : {item['Qté']} unites | Prix Actuel: {item['Prix Live']} | Perf: {item['Perf %']}%")
+                lignes_pdf_pos.append(f"- {item['Actif']} : {item['Qté']} unites | Prix Actuel: {item['Prix Live']} | Perf: {item['Perf %']} pourcents")
             
             sections_pdf = [
                 ("Positions du Portefeuille", lignes_pdf_pos),
@@ -367,7 +362,7 @@ elif menu == "3. Portefeuille Live (Expert)":
                     f"Total Investi : {total_investi:,.2f}",
                     f"Valorisation Actuelle (Live) : {total_actuel:,.2f}",
                     "",
-                    f"=> PLUS-VALUE GLOBALE : {pnl_global:,.2f} ({perf_globale:.2f} %)"
+                    f"=> PLUS-VALUE GLOBALE : {pnl_global:,.2f} ({perf_globale:.2f} pourcents)"
                 ])
             ]
             generer_pdf_premium("Etat du Portefeuille Boursier", sections_pdf, "Cockpit_Portefeuille")
@@ -387,16 +382,14 @@ elif menu == "4. Liberté Financière (FIRE)":
     
     taux_brut = st.slider("Rendement moyen annuel net d'inflation (%)", 2.0, 10.0, 5.0, step=0.5)
     
-    # Calcul du capital cible (Règle des 4% : Capital = Rente Annuelle * 25)
     capital_cible = (rente_visee * 12) * 25
     
-    # Projection jusqu'à atteindre le but
     taux_mensuel = (taux_brut / 100) / 12
     cap = capital_init
     mois_ecoules = 0
     historique_fire = [cap]
     
-    while cap < capital_cible and mois_ecoules < (60 * 12): # Limite à 60 ans de simu
+    while cap < capital_cible and mois_ecoules < (60 * 12): 
         cap = cap * (1 + taux_mensuel) + versement
         mois_ecoules += 1
         if mois_ecoules % 12 == 0:
@@ -411,14 +404,12 @@ elif menu == "4. Liberté Financière (FIRE)":
     r2.metric("Années d'effort requises", f"{annees_necessaires:.1f} ans")
     r3.metric("Âge de la Liberté Financière", f"{age_fire:.1f} ans", delta="Indépendance totale !", delta_color="normal")
     
-    # Graphique de projection FIRE
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=np.arange(age_actuel, age_actuel + len(historique_fire)), y=historique_fire, fill='tozeroy', name="Capital accumulé", line_color='#B5A27B'))
     fig.add_hline(y=capital_cible, line_dash="dash", line_color="green", annotation_text="Objectif FIRE")
     fig.update_layout(title="Trajectoire vers l'Indépendance", xaxis_title="Votre Âge", yaxis_title="Patrimoine Investi (€)", template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- PDF ---
     st.markdown("---")
     sections_pdf = [
         ("Hypotheses de base", [
@@ -426,10 +417,10 @@ elif menu == "4. Liberté Financière (FIRE)":
             f"- Capital de depart investi : {capital_init:,.0f} EUR",
             f"- Epargne mensuelle : {versement:,.0f} EUR",
             f"- Rente cible pour en vivre : {rente_visee:,.0f} EUR / mois",
-            f"- Taux de rendement net d'inflation : {taux_brut} %"
+            f"- Taux de rendement net d'inflation : {taux_brut} pourcents"
         ]),
         ("Projection et Objectif", [
-            f"- Capital necessaire pour la rente (Regle des 4%) : {capital_cible:,.0f} EUR",
+            f"- Capital necessaire pour la rente (Regle des 4 pourcents) : {capital_cible:,.0f} EUR",
             f"- Duree d'accumulation estimee : {annees_necessaires:.1f} annees",
             "",
             f"=> AGE D'INDEPENDANCE FINANCIERE (F.I.R.E) : {age_fire:.1f} ans"
